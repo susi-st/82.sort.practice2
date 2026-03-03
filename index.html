@@ -1,0 +1,491 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🍭 排序演算法小學堂</title>
+    <!-- 引入外部函式庫 -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=M+PLUS+Rounded+1c:wght@500;700;900&display=swap" rel="stylesheet">
+    <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <!-- 截圖功能所需的 library -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+    <style>
+        body {
+            font-family: 'M PLUS Rounded 1c', sans-serif;
+            -webkit-touch-callout: none;
+        }
+        .animate-shake { animation: shake 0.5s; }
+        @keyframes shake { 0%, 100% { transform: translateX(0); } 25% { transform: translateX(-5px); } 75% { transform: translateX(5px); } }
+        .cursor-grab { cursor: grab; }
+        .cursor-grab:active { cursor: grabbing; }
+        .cursor-text { cursor: text; }
+        .custom-scrollbar::-webkit-scrollbar { width: 8px; }
+        .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background: rgba(0,0,0,0.1); border-radius: 10px; }
+        .screenshot-mode input { caret-color: transparent; }
+        .card-reveal { transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1); }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useEffect, useRef, Fragment } = React;
+
+        // 圖示組件
+        const IconCheck = ({ size = 24 }) => (
+            <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
+        );
+        const IconX = ({ size = 24 }) => (
+            <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6 6 18M6 6l12 12"/></svg>
+        );
+        const IconCamera = ({ size = 20 }) => (
+            <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z"/><circle cx="12" cy="13" r="3"/></svg>
+        );
+        const IconShuffle = ({ size = 20 }) => (
+            <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M16 3h5v5M4 20 21 3M21 16v5h-5M15 15l6 6M4 4l5 5"/></svg>
+        );
+
+        const App = () => {
+            const [activeTab, setActiveTab] = useState('insertion');
+            const [selectedCase, setSelectedCase] = useState('practice');
+            const [customData, setCustomData] = useState(null); 
+            const [focusedId, setFocusedId] = useState(null); 
+            const [startTime, setStartTime] = useState(null); 
+            const [isCapturing, setIsCapturing] = useState(false); 
+            const cardRef = useRef(null);
+
+            const casesData = {
+                practice: [9, 7, 2, 5, 4],
+                best: [2, 4, 5, 7, 9],
+                worst: [9, 7, 5, 4, 2]
+            };
+
+            const originalData = customData || casesData[selectedCase] || casesData['practice'];
+
+            const getSolutions = (data) => {
+                if (!data || !Array.isArray(data)) return { insertion: [], selection: [], bubble: [] };
+                const d = [...data];
+                const insertion = [];
+                let insArr = [...d];
+                for (let i = 1; i < 5; i++) {
+                    let key = insArr[i];
+                    let j = i - 1;
+                    while (j >= 0 && insArr[j] > key) {
+                        insArr[j + 1] = insArr[j];
+                        j = j - 1;
+                    }
+                    insArr[j + 1] = key;
+                    insertion.push([...insArr]);
+                }
+                const selection = [];
+                let selArr = [...d];
+                for (let i = 0; i < 4; i++) {
+                    let minIdx = i;
+                    for (let j = i + 1; j < 5; j++) {
+                        if (selArr[j] < selArr[minIdx]) minIdx = j;
+                    }
+                    [selArr[i], selArr[minIdx]] = [selArr[minIdx], selArr[i]];
+                    selection.push([...selArr]);
+                }
+                const bubble = [[], [], [], []];
+                let bubArr = [...d];
+                for (let r = 0; r < 4; r++) {
+                    for (let s = 0; s < (4 - r); s++) {
+                        const idx1 = 4 - s;
+                        const idx2 = 3 - s;
+                        if (bubArr[idx1] < bubArr[idx2]) {
+                            [bubArr[idx1], bubArr[idx2]] = [bubArr[idx2], bubArr[idx1]];
+                        }
+                        bubble[r].push([...bubArr]);
+                    }
+                }
+                return { insertion, selection, bubble };
+            };
+
+            const [solutions, setSolutions] = useState(getSolutions(originalData));
+
+            const getInitialAnswers = () => ({
+                insertion: Array(4).fill(0).map(() => Array(5).fill('')),
+                selection: Array(4).fill(0).map(() => Array(5).fill('')),
+                bubble: [
+                    Array(4).fill(0).map(() => Array(5).fill('')),
+                    Array(3).fill(0).map(() => Array(5).fill('')),
+                    Array(2).fill(0).map(() => Array(5).fill('')),
+                    Array(1).fill(0).map(() => Array(5).fill('')),
+                ]
+            });
+
+            const [userAnswers, setUserAnswers] = useState(getInitialAnswers());
+            const [results, setResults] = useState({ insertion: [], selection: [], bubble: [[], [], [], []] });
+            const [stats, setStats] = useState({
+                insertion: { drag: 0, check: 0, time: 0 },
+                selection: { drag: 0, check: 0, time: 0 },
+                bubble: { drag: 0, check: 0, time: 0 }
+            });
+
+            useEffect(() => {
+                setSolutions(getSolutions(originalData));
+                setUserAnswers(getInitialAnswers());
+                setResults({ insertion: [], selection: [], bubble: [[], [], [], []] });
+                setStats(prev => ({ ...prev, [activeTab]: { drag: 0, check: 0, time: 0 } }));
+                setStartTime(null);
+                setFocusedId(null);
+            }, [selectedCase, activeTab, customData]);
+
+            useEffect(() => {
+                const handleClickOutside = (e) => {
+                    if (!e.target.closest('.sort-box')) setFocusedId(null);
+                };
+                window.addEventListener('mousedown', handleClickOutside);
+                return () => window.removeEventListener('mousedown', handleClickOutside);
+            }, []);
+
+            const isAllFilled = () => {
+                if (activeTab === 'bubble') {
+                    return userAnswers.bubble.every(round => round.every(step => step.every(val => val !== '')));
+                }
+                return userAnswers[activeTab].every(round => round.every(val => val !== ''));
+            };
+
+            const getBoxStyle = (tab, rIdx, cIdx) => {
+                if (tab === 'selection') return cIdx <= rIdx ? 'sorted' : 'unsorted';
+                if (tab === 'insertion') return cIdx <= rIdx + 1 ? 'sorted' : 'unsorted';
+                if (tab === 'bubble') return cIdx <= rIdx ? 'sorted' : 'unsorted';
+                return 'unsorted';
+            };
+
+            const handleRandomize = () => {
+                const pool = [1, 2, 3, 4, 5, 6, 7, 8, 9];
+                const shuffledPool = pool.sort(() => 0.5 - Math.random()).slice(0, 5);
+                const result = [];
+                const pair1 = [shuffledPool[0], shuffledPool[1]].sort((a, b) => b - a);
+                const pair2 = [shuffledPool[2], shuffledPool[3]].sort((a, b) => b - a);
+                result.push(pair1[0], pair1[1], pair2[0], pair2[1], shuffledPool[4]);
+                setCustomData(result);
+                setSelectedCase('custom');
+            };
+
+            const handleInputChange = (rIdx, cIdx, val, sIdx = null) => {
+                if (startTime === null) setStartTime(Date.now());
+                const cleanVal = val.replace(/[^0-9]/g, '').slice(-1);
+                const currentVal = (activeTab === 'bubble') 
+                    ? userAnswers.bubble[rIdx][sIdx][cIdx] 
+                    : userAnswers[activeTab][rIdx][cIdx];
+
+                if (cleanVal !== currentVal) {
+                    setStats(prev => ({ ...prev, [activeTab]: { ...prev[activeTab], drag: prev[activeTab].drag + 1 } }));
+                }
+
+                const updated = { ...userAnswers };
+                if (activeTab === 'bubble') {
+                    updated.bubble[rIdx][sIdx][cIdx] = cleanVal;
+                    const currentRoundSteps = updated.bubble[rIdx];
+                    const lastStepIdxOfRound = currentRoundSteps.length - 1;
+                    if (cIdx > 3 - sIdx) {
+                        for (let nextS = sIdx + 1; nextS <= lastStepIdxOfRound; nextS++) {
+                            updated.bubble[rIdx][nextS][cIdx] = cleanVal;
+                        }
+                    }
+                    const isSortedPosition = getBoxStyle('bubble', rIdx, cIdx) === 'sorted';
+                    if (sIdx === lastStepIdxOfRound && isSortedPosition) {
+                        for (let targetRIdx = rIdx + 1; targetRIdx < updated.bubble.length; targetRIdx++) {
+                            updated.bubble[targetRIdx].forEach((step, targetSIdx) => {
+                                if (getBoxStyle('bubble', targetRIdx, cIdx) === 'sorted') {
+                                    updated.bubble[targetRIdx][targetSIdx][cIdx] = cleanVal;
+                                }
+                            });
+                        }
+                    }
+                } else {
+                    updated[activeTab][rIdx][cIdx] = cleanVal;
+                    if (activeTab === 'selection') {
+                        const isSorted = getBoxStyle(activeTab, rIdx, cIdx) === 'sorted';
+                        if (isSorted) {
+                            for (let i = rIdx + 1; i < 4; i++) {
+                                if (getBoxStyle(activeTab, i, cIdx) === 'sorted') updated[activeTab][i][cIdx] = cleanVal;
+                            }
+                        }
+                    }
+                }
+                setUserAnswers(updated);
+            };
+
+            const handleKeyDown = (e, rIdx, cIdx, sIdx = null) => {
+                let target = null;
+                const prefix = activeTab === 'bubble' ? `input-${rIdx}-${sIdx}-` : `input-${rIdx}-`;
+                
+                if (e.key === 'ArrowRight') target = document.getElementById(`${prefix}${cIdx + 1}`);
+                else if (e.key === 'ArrowLeft') target = document.getElementById(`${prefix}${cIdx - 1}`);
+                else if (e.key === 'ArrowUp') {
+                    if (activeTab === 'bubble') {
+                        if (sIdx > 0) target = document.getElementById(`input-${rIdx}-${sIdx - 1}-${cIdx}`);
+                        else if (rIdx > 0) {
+                            const prevLastSIdx = userAnswers.bubble[rIdx - 1].length - 1;
+                            target = document.getElementById(`input-${rIdx - 1}-${prevLastSIdx}-${cIdx}`);
+                        }
+                    } else target = document.getElementById(`input-${rIdx - 1}-${cIdx}`);
+                } else if (e.key === 'ArrowDown') {
+                    if (activeTab === 'bubble') {
+                        if (sIdx < userAnswers.bubble[rIdx].length - 1) target = document.getElementById(`input-${rIdx}-${sIdx + 1}-${cIdx}`);
+                        else if (rIdx < 3) target = document.getElementById(`input-${rIdx + 1}-0-${cIdx}`);
+                    } else target = document.getElementById(`input-${rIdx + 1}-${cIdx}`);
+                }
+
+                if (target) {
+                    e.preventDefault();
+                    target.focus();
+                    setFocusedId(target.id.replace('input-', ''));
+                }
+            };
+
+            const onDragStart = (e, value, id) => {
+                if (focusedId === id || !value) { e.preventDefault(); return; }
+                e.dataTransfer.setData("text/plain", value);
+                const img = new Image();
+                img.src = 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7';
+            };
+
+            const onDrop = (e, rIdx, cIdx, sIdx = null) => {
+                e.preventDefault();
+                const data = e.dataTransfer.getData("text/plain");
+                if (data) handleInputChange(rIdx, cIdx, data, sIdx);
+            };
+
+            const checkAnswers = () => {
+                if (!isAllFilled()) return;
+                let newCheckCount = stats[activeTab].check + 1;
+                let newResults;
+                let allCorrect = false;
+                if (activeTab === 'bubble') {
+                    newResults = userAnswers.bubble.map((round, rIdx) => round.map((step, sIdx) => step.every((val, cIdx) => parseInt(val) === solutions.bubble[rIdx][sIdx][cIdx])));
+                    allCorrect = newResults.every(r => r.every(s => s === true));
+                } else {
+                    newResults = userAnswers[activeTab].map((round, rIdx) => round.every((val, cIdx) => parseInt(val) === solutions[activeTab][rIdx][cIdx]));
+                    allCorrect = newResults.every(r => r === true);
+                }
+                setResults(prev => ({ ...prev, [activeTab]: newResults }));
+                if (allCorrect && startTime !== null) {
+                    const timeSpent = Math.floor((Date.now() - startTime) / 1000);
+                    setStats(prev => ({ ...prev, [activeTab]: { ...prev[activeTab], check: newCheckCount, time: timeSpent } }));
+                } else {
+                    setStats(prev => ({ ...prev, [activeTab]: { ...prev[activeTab], check: newCheckCount } }));
+                }
+            };
+
+            const handleScreenshot = () => {
+                if (!window.html2canvas || !cardRef.current) return;
+                setIsCapturing(true);
+                setFocusedId(null);
+                setTimeout(() => {
+                    window.html2canvas(cardRef.current, {
+                        backgroundColor: '#f8fafc',
+                        scale: 2,
+                        useCORS: true,
+                        logging: false
+                    }).then(canvas => {
+                        const link = document.createElement('a');
+                        link.download = `排序演算法練習_${activeTab}.png`;
+                        link.href = canvas.toDataURL('image/png');
+                        link.click();
+                        setIsCapturing(false);
+                    }).catch(() => setIsCapturing(false));
+                }, 200);
+            };
+
+            const getTheme = () => {
+                switch (activeTab) {
+                    case 'selection': return { primary: 'bg-[#E3FFE7]', secondary: 'bg-[#C6F6D5]', text: 'text-[#22543D]', border: 'border-[#9AE6B4]', highlight: 'bg-[#B2F5EA]', highlightBorder: 'border-[#48BB78]', tab: 'bg-[#48BB78]' };
+                    case 'bubble': return { primary: 'bg-[#EAE6FF]', secondary: 'bg-[#DDD6FE]', text: 'text-[#4C1D95]', border: 'border-[#A78BFA]', highlight: 'bg-[#DDD6FE]', highlightBorder: 'border-[#8B5CF6]', tab: 'bg-[#8B5CF6]' };
+                    default: return { primary: 'bg-[#FFDEE9]', secondary: 'bg-[#FED7E2]', text: 'text-[#702459]', border: 'border-[#FBB6CE]', highlight: 'bg-[#FED7E2]', highlightBorder: 'border-[#ED64A6]', tab: 'bg-[#ED64A6]' };
+                }
+            };
+
+            const theme = getTheme();
+
+            const StatusSlot = ({ result }) => (
+                <div className="w-14 flex justify-center items-center h-14">
+                    {result !== undefined && (
+                        <div className={`p-1.5 rounded-full shadow-lg border-2 border-white transition-all transform scale-110 ${result ? 'bg-green-500' : 'bg-red-500 animate-shake'}`}>
+                            {result ? <IconCheck size={20} /> : <IconX size={20} />}
+                        </div>
+                    )}
+                </div>
+            );
+
+            const SortBox = ({ value, id, isSorted, isBubbleBox, onDrop, rIdx, sIdx, cIdx }) => {
+                const isFocused = focusedId === id;
+                // 決定是否顯示遮蓋層：如果是未排序狀態 (!isSorted)，即便它是 bubbleBox 也要遮起來
+                const shouldCover = !isSorted && !isCapturing;
+                
+                return (
+                    <div 
+                        className={`group relative w-14 h-14 flex items-center justify-center rounded-2xl transition-all shadow-md sort-box 
+                            ${isFocused ? 'ring-4 ring-blue-300 z-10 scale-110 shadow-xl' : ''}
+                            ${!isFocused ? 'cursor-grab active:cursor-grabbing hover:brightness-105' : 'cursor-default'}
+                            ${isBubbleBox ? 'border-red-500 bg-white scale-110 z-20 shadow-lg border-4' : isSorted ? `${theme.highlight} ${theme.highlightBorder} shadow-none border-4` : 'bg-gray-100 border-gray-200 border-4'}`}
+                        draggable={!isFocused && value !== ''}
+                        onDragStart={(e) => onDragStart(e, value, id)}
+                        onDragOver={(e) => e.preventDefault()}
+                        onDrop={(e) => onDrop(e, rIdx, cIdx, sIdx)}
+                        onClick={() => setFocusedId(id)}
+                    >
+                        {shouldCover && (
+                            <div className={`absolute inset-0 z-10 flex items-center justify-center bg-gray-200 rounded-xl text-gray-400 font-black text-xl transition-opacity duration-300 pointer-events-none ${isFocused ? 'opacity-0' : 'group-hover:opacity-0 opacity-100'}`}>?</div>
+                        )}
+                        <input 
+                            id={`input-${id}`}
+                            type="text"
+                            inputMode="numeric"
+                            autoComplete="off"
+                            value={value}
+                            onKeyDown={(e) => handleKeyDown(e, rIdx, cIdx, sIdx)}
+                            onChange={(e) => handleInputChange(rIdx, cIdx, e.target.value, sIdx)}
+                            className={`w-full h-full bg-transparent text-center text-2xl font-black focus:outline-none card-reveal
+                                ${isFocused ? 'cursor-text' : 'cursor-grab pointer-events-none'} 
+                                ${isSorted ? theme.text : 'text-gray-500'}
+                                ${shouldCover && !isFocused ? 'opacity-0 group-hover:opacity-100' : 'opacity-100'}`}
+                        />
+                    </div>
+                );
+            };
+
+            return (
+                <div className={`min-h-screen p-4 transition-colors duration-700 ${theme.primary} flex items-start justify-center select-none ${isCapturing ? 'screenshot-mode' : ''}`}>
+                    <div ref={cardRef} className="w-full max-w-5xl bg-white/90 backdrop-blur-md shadow-[0_20px_50px_rgba(0,0,0,0.1)] rounded-[60px] p-10 border-[12px] border-white min-h-[92vh] overflow-y-auto custom-scrollbar relative">
+                        <h1 className={`text-4xl font-[900] text-center mb-8 ${theme.text} tracking-wider drop-shadow-sm`}>🍭 排序演算法小學堂</h1>
+
+                        <div className="flex flex-col items-center gap-6 mb-10">
+                            <div className="flex justify-center gap-5">
+                                {['insertion', 'selection', 'bubble'].map(tab => (
+                                    <button
+                                        key={tab}
+                                        onClick={() => { setActiveTab(tab); setFocusedId(null); setCustomData(null); setSelectedCase('practice'); }}
+                                        className={`px-10 py-3.5 rounded-full font-black transition-all transform hover:scale-105 active:translate-y-1 
+                                            ${activeTab === tab ? `${theme.tab} text-white shadow-xl border-2 border-transparent` : `bg-white/40 text-gray-400 border-2 border-gray-200 hover:bg-white hover:border-gray-300 shadow-sm`}`}
+                                    >
+                                        {tab === 'insertion' ? '插入排序' : tab === 'selection' ? '選擇排序' : '氣泡排序'}
+                                    </button>
+                                ))}
+                            </div>
+                            <div className="bg-gray-100 p-1.5 rounded-[24px] flex gap-1 shadow-inner">
+                                {[{ id: 'practice', label: 'Practice Case', color: 'bg-amber-400' }, { id: 'best', label: 'Best Case', color: 'bg-emerald-400' }, { id: 'worst', label: 'Worst Case', color: 'bg-rose-400' }].map(c => (
+                                    <button key={c.id} onClick={() => { setSelectedCase(c.id); setCustomData(null); }} className={`px-6 py-2 rounded-[18px] text-xs font-black transition-all transform ${selectedCase === c.id && !customData ? `${c.color} text-white shadow-md scale-105` : 'text-gray-400 hover:text-gray-600 hover:bg-white'}`}>
+                                        {c.label}
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
+
+                        <div className="flex flex-col items-center space-y-6">
+                            <div className="flex items-center justify-center w-full gap-6">
+                                <div className={`w-40 py-3 rounded-2xl border-2 ${theme.border} ${theme.secondary} ${theme.text} font-black text-center text-sm shadow-sm`}>原始資料</div>
+                                <div className="flex gap-4">
+                                    {originalData.map((num, idx) => {
+                                        const isSorted = (activeTab === 'insertion' && idx === 0);
+                                        const isBubbleBox = (activeTab === 'bubble' && idx === 4);
+                                        // 原始資料遮蓋邏輯同步
+                                        const shouldCover = !isSorted && !isCapturing;
+                                        return (
+                                            <div 
+                                                key={idx} 
+                                                className={`group relative w-14 h-14 flex items-center justify-center rounded-2xl text-2xl font-black transition-all cursor-grab active:cursor-grabbing hover:scale-110 border-4 ${isBubbleBox ? 'border-red-500 bg-white shadow-lg z-10' : isSorted ? `${theme.highlight} ${theme.highlightBorder} ${theme.text} shadow-sm` : 'bg-gray-100 border-gray-200 text-gray-400'}`} 
+                                                draggable="true" 
+                                                onDragStart={(e) => onDragStart(e, num.toString(), `orig-${idx}`)}
+                                            >
+                                                {shouldCover && (
+                                                    <div className="absolute inset-0 z-10 flex items-center justify-center bg-gray-200 rounded-xl text-gray-400 font-black text-xl opacity-100 group-hover:opacity-0 transition-opacity duration-300 pointer-events-none">?</div>
+                                                )}
+                                                <span className={`card-reveal ${shouldCover ? 'opacity-0 group-hover:opacity-100' : 'opacity-100'}`}>{num}</span>
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                                <div className="w-14" />
+                            </div>
+
+                            <div className="h-px bg-gradient-to-r from-transparent via-gray-200 to-transparent w-full my-2" />
+
+                            <div className="w-full space-y-4">
+                                {activeTab === 'bubble' ? (
+                                    userAnswers.bubble.map((roundSteps, rIdx) => (
+                                        <Fragment key={rIdx}>
+                                            {roundSteps.map((stepArr, sIdx) => {
+                                                const lastStepIdxOfRound = roundSteps.length - 1;
+                                                return (
+                                                    <div key={sIdx} className="flex items-center justify-center w-full gap-6">
+                                                        <div className={`w-40 py-3 rounded-2xl border-2 ${theme.border} ${theme.secondary} ${theme.text} font-black text-center text-sm shadow-sm`}>第 {rIdx + 1} 輪 第 {sIdx + 1} 回</div>
+                                                        <div className="flex gap-4">
+                                                            {stepArr.map((currentVal, cIdx) => {
+                                                                const bubblePos = (sIdx === lastStepIdxOfRound) ? 4 : (3 - sIdx);
+                                                                return (
+                                                                    <SortBox key={cIdx} value={currentVal} id={`${rIdx}-${sIdx}-${cIdx}`} isSorted={cIdx < rIdx || (sIdx === lastStepIdxOfRound && cIdx === rIdx)} isBubbleBox={cIdx === bubblePos} onDrop={onDrop} rIdx={rIdx} sIdx={sIdx} cIdx={cIdx} />
+                                                                );
+                                                            })}
+                                                        </div>
+                                                        <StatusSlot result={results.bubble[rIdx]?.[sIdx]} />
+                                                    </div>
+                                                );
+                                            })}
+                                            {rIdx < userAnswers.bubble.length - 1 && <div className="py-2 flex justify-center"><div className="h-px w-3/4 border-t border-dashed border-violet-200 opacity-30" /></div>}
+                                        </Fragment>
+                                    ))
+                                ) : (
+                                    userAnswers[activeTab].map((round, rIdx) => (
+                                        <div key={rIdx} className="flex items-center justify-center w-full gap-6">
+                                            <div className={`w-40 py-3 rounded-2xl border-2 ${theme.border} ${theme.secondary} ${theme.text} font-black text-center text-sm shadow-sm`}>第 {rIdx + 1} 輪結果</div>
+                                            <div className="flex gap-4">
+                                                {round.map((currentVal, cIdx) => (
+                                                    <SortBox key={cIdx} value={currentVal} id={`${rIdx}-${cIdx}`} isSorted={getBoxStyle(activeTab, rIdx, cIdx) === 'sorted'} isBubbleBox={false} onDrop={onDrop} rIdx={rIdx} cIdx={cIdx} />
+                                                ))}
+                                            </div>
+                                            <StatusSlot result={results[activeTab]?.[rIdx]} />
+                                        </div>
+                                    ))
+                                )}
+                            </div>
+
+                            <div className="mt-8 flex justify-center gap-4 w-full flex-wrap">
+                                <button onClick={handleScreenshot} disabled={isCapturing} className={`px-5 py-4 rounded-3xl border-2 ${theme.border} bg-white ${theme.text} font-black hover:bg-gray-50 transition-all active:scale-95 shadow-sm sort-box flex items-center gap-2 ${isCapturing ? 'opacity-50' : ''}`}>
+                                    <IconCamera size={20} /> 截圖
+                                </button>
+                                
+                                <button onClick={() => { setUserAnswers(getInitialAnswers()); setResults({ insertion: [], selection: [], bubble: [[], [], [], []] }); setStats(prev => ({ ...prev, [activeTab]: { drag: 0, check: 0, time: 0 } })); setStartTime(null); setFocusedId(null); }} className={`px-5 py-4 rounded-3xl border-2 ${theme.border} ${theme.secondary} ${theme.text} font-black hover:brightness-105 transition-all active:scale-95 shadow-sm sort-box`}>
+                                    清空重填
+                                </button>
+                                
+                                <button onClick={handleRandomize} className={`px-5 py-4 rounded-3xl border-2 ${theme.border} bg-white ${theme.text} font-black hover:bg-gray-50 transition-all active:scale-95 shadow-sm sort-box flex items-center gap-2`}>
+                                    <IconShuffle size={20} /> 隨機安排
+                                </button>
+                                
+                                <button onClick={checkAnswers} disabled={!isAllFilled()} className={`px-6 py-4 rounded-3xl font-[900] text-2xl shadow-2xl transition-all transform sort-box ${isAllFilled() ? `${theme.highlight} ${theme.highlightBorder} ${theme.text} border-4 hover:scale-105 active:translate-y-1` : 'bg-gray-200 text-gray-400 cursor-not-allowed opacity-50 shadow-none'}`}>
+                                    {isAllFilled() ? '檢查答案 🎯' : '請填完'}
+                                </button>
+                            </div>
+
+                            <div className="w-full pt-8 flex flex-col items-center">
+                                <div className="h-px bg-gray-200 w-4/5 mb-8" />
+                                <div className="flex flex-row items-center gap-10 flex-wrap justify-center">
+                                    <div className={`text-xl font-[900] ${theme.text} tracking-widest flex items-center gap-2 whitespace-nowrap`}><span className="w-1.5 h-6 bg-red-400 rounded-full" /> 操作統計</div>
+                                    <div className="flex flex-row gap-4 flex-wrap">
+                                        <div className={`h-12 flex items-center gap-4 px-4 rounded-2xl border-2 border-red-400 bg-red-50 shadow-sm`}><span className="text-red-700 font-black text-base tracking-wider leading-none">拖曳次數</span><div className="flex items-center gap-1.5 leading-none"><span className="text-2xl font-black text-red-500">{stats[activeTab].drag}</span><span className="text-red-700 font-black text-base">次</span></div></div>
+                                        <div className={`h-12 flex items-center gap-4 px-4 rounded-2xl border-2 border-orange-400 bg-orange-50 shadow-sm`}><span className="text-orange-700 font-black text-base tracking-wider leading-none">檢查次數</span><div className="flex items-center gap-1.5 leading-none"><span className="text-2xl font-black text-orange-500">{stats[activeTab].check}</span><span className="text-orange-700 font-black text-base">次</span></div></div>
+                                        <div className={`h-12 flex items-center gap-4 px-4 rounded-2xl border-2 border-sky-400 bg-sky-50 shadow-sm`}><span className="text-sky-700 font-black text-base tracking-wider leading-none">花費時間</span><div className="flex items-center gap-1.5 leading-none"><span className="text-2xl font-black text-sky-500">{stats[activeTab].time}</span><span className="text-sky-700 font-black text-base">秒</span></div></div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <div className="mt-12 text-center text-gray-400 text-[11px] font-[900] uppercase tracking-[0.25em] bg-white/30 px-6 py-2 rounded-full inline-block">📊 滑鼠滑過「?」可看數字 • ↔️ 方向鍵可切換格子 • ✋ 抓取方框即可拖拉</div>
+                    </div>
+                </div>
+            );
+        };
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+</html>
